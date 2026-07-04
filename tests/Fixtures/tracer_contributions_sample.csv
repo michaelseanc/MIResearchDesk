@@ -1,0 +1,4 @@
+CO_ID,ContributionAmount,ContributionDate,LastName,FirstName,MI,Suffix,Address1,Address2,City,State,Zip,Explanation,RecordID,FiledDate,ContributionType,ReceiptType,ContributorType,Electioneering,CommitteeType,CommitteeName,CandidateName,Employer,Occupation,Amended,Amendment,AmendedRecordID,Jurisdiction,OccupationComments
+100,1500,2026-06-15 00:00:00,Public,John,Q,,1 Main St,,Monument,CO,80132,,5001,2026-06-16 00:00:00,Monetary (Itemized),Check,Individual,,Candidate,Friends of Monument,Jane Candidate,Self,Teacher,N,N,0,STATEWIDE,
+200,500,2026-05-01 00:00:00,Denver,Sam,,,9 Larimer St,,Denver,CO,80202,,5002,2026-05-02 00:00:00,Monetary (Itemized),Check,Individual,,Issue,Denver Forward,,,Lawyer,N,N,0,STATEWIDE,
+300,2500,2026-04-10 00:00:00,Acme Paving LLC,,,,5 Rampart Rd,,Monument,CO,80132,,5003,2026-04-11 00:00:00,Monetary (Itemized),Check,Business,,Committee,Tri-View Metropolitan District,,,,N,N,0,STATEWIDE,
