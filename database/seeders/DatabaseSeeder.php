@@ -65,11 +65,16 @@ class DatabaseSeeder extends Seeder
             Permission::findOrCreate($name, 'web');
         }
 
-        // Tenant #1 — Monument Independent.
-        $org = Organization::firstOrCreate(
-            ['slug' => 'monument-independent'],
-            ['name' => 'Monument Independent', 'status' => 'active']
-        );
+        // Tenant #1 — Monument Independent. Pinned to id=1: the tenancy convention and the whole test
+        // suite treat organization 1 as the primary tenant. Pinning it keeps behavior deterministic
+        // across databases (MySQL doesn't reset AUTO_INCREMENT on rolled-back test transactions the
+        // way SQLite :memory: effectively does).
+        $org = Organization::query()->firstWhere('slug', 'monument-independent');
+        if (! $org) {
+            $org = new Organization(['name' => 'Monument Independent', 'slug' => 'monument-independent', 'status' => 'active']);
+            $org->id = 1;
+            $org->save();
+        }
 
         // Operate as this tenant for the remainder of the seed (stamps organization_id, scopes roles).
         Organization::useOrganization($org->id);

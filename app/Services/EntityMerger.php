@@ -51,11 +51,14 @@ class EntityMerger
             $this->mergePivot('story_contacts', 'story_id', $s, $k);
             $this->mergePivot('document_entity_links', 'document_id', $s, $k);
 
-            // Polymorphic pivots (tags, access grants).
-            DB::table('taggables')->where('taggable_type', $morph)->where('taggable_id', $s)
-                ->whereIn('tag_id', fn ($q) => $q->select('tag_id')->from('taggables')
-                    ->where('taggable_type', $morph)->where('taggable_id', $k))
-                ->delete();
+            // Polymorphic pivots (tags, access grants). Same MySQL 1093 rule — pull keeper's tag_ids
+            // into PHP before deleting colliding source rows.
+            $keeperTagIds = DB::table('taggables')->where('taggable_type', $morph)->where('taggable_id', $k)
+                ->pluck('tag_id')->all();
+            if ($keeperTagIds !== []) {
+                DB::table('taggables')->where('taggable_type', $morph)->where('taggable_id', $s)
+                    ->whereIn('tag_id', $keeperTagIds)->delete();
+            }
             DB::table('taggables')->where('taggable_type', $morph)->where('taggable_id', $s)->update(['taggable_id' => $k]);
             DB::table('user_access_grants')->where('grantable_type', $morph)->where('grantable_id', $s)->update(['grantable_id' => $k]);
 
@@ -63,11 +66,27 @@ class EntityMerger
             DB::table('relationships')->where('from_entity_id', $s)->update(['from_entity_id' => $k]);
             DB::table('relationships')->where('to_entity_id', $s)->update(['to_entity_id' => $k]);
             DB::table('relationships')->where('from_entity_id', $k)->where('to_entity_id', $k)->delete();
-            DB::delete(
-                'DELETE FROM relationships WHERE (from_entity_id = ? OR to_entity_id = ?)
-                 AND id NOT IN (SELECT MIN(id) FROM relationships GROUP BY from_entity_id, to_entity_id, relationship_type_id)',
-                [$k, $k],
-            );
+
+            // De-duplicate the keeper's edges: keep the lowest id per (from, to, type), drop the rest.
+            // Computed in PHP — MySQL forbids DELETE from a table its own subquery reads (error 1093).
+            $edges = DB::table('relationships')
+                ->where(fn ($q) => $q->where('from_entity_id', $k)->orWhere('to_entity_id', $k))
+                ->orderBy('id')
+                ->get(['id', 'from_entity_id', 'to_entity_id', 'relationship_type_id']);
+
+            $seen = [];
+            $dupeIds = [];
+            foreach ($edges as $edge) {
+                $key = $edge->from_entity_id . '-' . $edge->to_entity_id . '-' . $edge->relationship_type_id;
+                if (isset($seen[$key])) {
+                    $dupeIds[] = $edge->id;
+                } else {
+                    $seen[$key] = true;
+                }
+            }
+            if ($dupeIds !== []) {
+                DB::table('relationships')->whereIn('id', $dupeIds)->delete();
+            }
 
             // 5. Profiles: move the source's only if the keeper lacks one (otherwise keeper's wins).
             foreach (['person_profiles', 'organization_profiles'] as $table) {
@@ -102,9 +121,14 @@ class EntityMerger
     /** For a pivot unique on ($otherCol, entity_id): delete the source rows that would collide, then repoint. */
     private function mergePivot(string $table, string $otherCol, int $source, int $keeper): void
     {
-        DB::table($table)->where('entity_id', $source)
-            ->whereIn($otherCol, fn ($q) => $q->select($otherCol)->from($table)->where('entity_id', $keeper))
-            ->delete();
+        // Keeper's existing values — the source's rows for these would violate the unique index on
+        // repoint. Pull them into PHP first: MySQL forbids DELETE from a table a subquery also reads
+        // (error 1093), whereas SQLite allows it. A plain whereIn(array) works on both.
+        $keeperValues = DB::table($table)->where('entity_id', $keeper)->pluck($otherCol)->all();
+
+        if ($keeperValues !== []) {
+            DB::table($table)->where('entity_id', $source)->whereIn($otherCol, $keeperValues)->delete();
+        }
         DB::table($table)->where('entity_id', $source)->update(['entity_id' => $keeper]);
     }
 }
