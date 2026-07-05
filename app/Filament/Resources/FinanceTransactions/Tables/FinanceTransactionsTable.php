@@ -58,7 +58,8 @@ class FinanceTransactionsTable
                     DeleteBulkAction::make(),
                 ]),
             ])
-            ->defaultSort('transaction_date', 'desc');
+            ->defaultSort('transaction_date', 'desc')
+            ->deferLoading(); // paint the page first, then load rows — snappier on large datasets
     }
 
     /**

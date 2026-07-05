@@ -37,6 +37,7 @@ class ExpendituresTable
                         ->distinct()->orderBy('jurisdiction')->pluck('jurisdiction', 'jurisdiction')->all()),
             ])
             ->defaultSort('transaction_date', 'desc')
+            ->deferLoading()
             ->emptyStateHeading('No expenditures imported')
             ->emptyStateDescription('Use TRACER imports → Expenditures to pull committee spending.');
     }

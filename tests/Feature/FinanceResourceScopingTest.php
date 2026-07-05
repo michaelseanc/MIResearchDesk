@@ -54,6 +54,7 @@ class FinanceResourceScopingTest extends TestCase
     public function test_contributions_list_shows_only_contributions(): void
     {
         Livewire::test(ListFinanceTransactions::class)
+            ->loadTable() // tables defer loading for performance
             ->assertCanSeeTableRecords([$this->contribution])
             ->assertCanNotSeeTableRecords([$this->expenditure, $this->loan]);
     }
@@ -61,6 +62,7 @@ class FinanceResourceScopingTest extends TestCase
     public function test_expenditures_list_shows_only_expenditures(): void
     {
         Livewire::test(ListExpenditures::class)
+            ->loadTable()
             ->assertCanSeeTableRecords([$this->expenditure])
             ->assertCanNotSeeTableRecords([$this->contribution, $this->loan]);
     }
@@ -68,6 +70,7 @@ class FinanceResourceScopingTest extends TestCase
     public function test_loans_list_shows_only_loans_and_renders_balance(): void
     {
         Livewire::test(ListLoans::class)
+            ->loadTable()
             ->assertCanSeeTableRecords([$this->loan])
             ->assertCanNotSeeTableRecords([$this->contribution, $this->expenditure])
             ->assertSee('4,200.00'); // outstanding balance from source_extra

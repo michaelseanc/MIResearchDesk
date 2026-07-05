@@ -47,6 +47,7 @@ class LoansTable
                         ->distinct()->orderBy('jurisdiction')->pluck('jurisdiction', 'jurisdiction')->all()),
             ])
             ->defaultSort('transaction_date', 'desc')
+            ->deferLoading()
             ->emptyStateHeading('No loans imported')
             ->emptyStateDescription('Use TRACER imports → Loans to pull committee loans.');
     }
