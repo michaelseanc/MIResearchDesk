@@ -87,6 +87,22 @@ class SavedGraphViewTest extends TestCase
         $this->assertNull(SavedGraphView::find($view->id));
     }
 
+    public function test_start_from_search_is_server_side_and_filters_by_name(): void
+    {
+        Entity::create(['entity_type' => 'person', 'display_name' => 'Alexandra Zophar']);
+        Entity::create(['entity_type' => 'person', 'display_name' => 'Bob Zephyr']);
+        Entity::create(['entity_type' => 'organization', 'display_name' => 'Zophar Holdings LLC']);
+
+        $results = (new RelationshipGraph())->searchEntities('zophar');
+        $names = array_column($results, 'name');
+
+        $this->assertContains('Alexandra Zophar', $names);
+        $this->assertContains('Zophar Holdings LLC', $names);
+        $this->assertNotContains('Bob Zephyr', $names, 'non-matching names are excluded');
+        $this->assertArrayHasKey('id', $results[0]);
+        $this->assertArrayHasKey('name', $results[0]);
+    }
+
     public function test_views_are_org_scoped(): void
     {
         SavedGraphView::create(['user_id' => auth()->id(), 'name' => 'Org 1 view', 'params' => []]);

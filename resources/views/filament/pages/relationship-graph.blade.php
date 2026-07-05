@@ -21,37 +21,39 @@
                 <div class="flex flex-col gap-1 text-sm md:col-span-6">
                     <span class="font-medium text-gray-700 dark:text-gray-300">Start from</span>
                     <div wire:ignore
-                        x-data="entityPicker(@js($this->getEntityOptions()), @js($focusEntityId))"
+                        x-data="entityPicker(@js($focusEntityId), @js($this->focusEntityLabel()))"
                         x-on:filters-reset.window="clear(true)"
-                        x-on:focus-loaded.window="selectedId = ($event.detail[0]?.id ?? $event.detail.id ?? null)"
+                        x-on:focus-loaded.window="syncFromEvent($event.detail[0] ?? $event.detail)"
                         class="relative">
-                        <button type="button" @click="open = !open; if (open) $nextTick(() => $refs.q.focus())"
+                        <button type="button" @click="onOpen()"
                             class="flex w-full items-center justify-between rounded-lg border border-gray-300 px-3 py-2 text-left text-sm dark:border-gray-600 dark:bg-gray-800">
-                            <span :class="selectedId ? '' : 'text-gray-400'" x-text="selectedLabel()"></span>
+                            <span :class="selectedId ? '' : 'text-gray-400'" x-text="buttonText()"></span>
                             <span class="text-gray-400">▾</span>
                         </button>
                         <div x-show="open" x-transition @click.outside="open = false"
                             class="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                            <input type="text" x-ref="q" x-model="q" placeholder="Search people & organizations…"
+                            <input type="text" x-ref="q" x-model="q" @input.debounce.300ms="search()"
+                                placeholder="Search all people & organizations…"
                                 class="mb-2 w-full rounded-lg border-gray-300 text-sm dark:bg-gray-900 dark:border-gray-600">
                             <div class="max-h-64 space-y-0.5 overflow-y-auto">
                                 <button type="button" @click="clear()"
                                     class="flex w-full items-center rounded px-2 py-1 text-left text-sm text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700"
                                     x-show="q === ''">— Whole network —</button>
-                                <template x-for="[id, label] in filtered()" :key="id">
-                                    <button type="button" @click="select(id)"
+                                <template x-for="e in results" :key="e.id">
+                                    <button type="button" @click="select(e.id, e.name)"
                                         class="flex w-full items-center rounded px-2 py-1 text-left text-sm text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
-                                        :class="id === selectedId ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300' : ''">
-                                        <span x-text="label"></span>
+                                        :class="e.id === selectedId ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300' : ''">
+                                        <span x-text="e.name"></span>
                                     </button>
                                 </template>
-                                <p class="px-2 py-2 text-xs text-gray-400" x-show="filtered().length === 0">
+                                <p class="px-2 py-2 text-xs text-gray-400" x-show="loading">Searching…</p>
+                                <p class="px-2 py-2 text-xs text-gray-400" x-show="!loading && results.length === 0 && q !== ''">
                                     No matching entities.
                                 </p>
                             </div>
                         </div>
                     </div>
-                    <span class="text-xs text-gray-400">Type to jump to a person or organization.</span>
+                    <span class="text-xs text-gray-400">Type any name — searches the whole database.</span>
                 </div>
 
                 <div class="flex flex-col gap-1 text-sm md:col-span-4">
@@ -164,7 +166,7 @@
                 <template x-for="(crumb, i) in trail" :key="crumb.id">
                     <span class="flex items-center gap-1">
                         <span class="text-gray-300 dark:text-gray-600">›</span>
-                        <button type="button" @click="focusOn(crumb.id)"
+                        <button type="button" @click="focusOn(crumb.id, crumb.label)"
                             class="rounded px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-800"
                             :class="i === trail.length - 1
                                 ? 'font-semibold text-gray-800 dark:text-gray-100'
@@ -211,7 +213,7 @@
                     <div class="text-base font-semibold text-gray-800 dark:text-gray-100" x-text="sel.data.label"></div>
                     <div class="text-sm text-gray-500" x-show="sel.data.sub" x-text="sel.data.sub"></div>
                     <div class="mt-2 flex flex-col gap-2">
-                        <button type="button" @click="focusOn(sel.data.id)"
+                        <button type="button" @click="focusOn(sel.data.id, sel.data.label)"
                             x-show="!sel.data.focus"
                             class="inline-flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700">
                             <span>Explore</span>
@@ -273,33 +275,53 @@
             document.head.appendChild(s);
         }
 
-        window.entityPicker = function (options, initial) {
+        window.entityPicker = function (initialId, initialLabel) {
             return {
                 open: false,
                 q: '',
-                entries: Object.entries(options).map(([id, label]) => [parseInt(id, 10), label]),
-                selectedId: initial ? Number(initial) : null,
-                selectedLabel() {
+                results: [],
+                loading: false,
+                selectedId: initialId ? Number(initialId) : null,
+                selectedLabel: initialLabel || null,
+                buttonText() {
                     if (!this.selectedId) return '— Whole network —';
-                    const hit = this.entries.find(([id]) => id === this.selectedId);
-                    return hit ? hit[1] : '— Whole network —';
+                    return this.selectedLabel || ('#' + this.selectedId);
                 },
-                filtered() {
-                    const q = this.q.trim().toLowerCase();
-                    if (q === '') return this.entries.slice(0, 50);
-                    return this.entries.filter(([, label]) => label.toLowerCase().includes(q)).slice(0, 50);
+                // Server-side search over the whole entity table (no client-side row cap).
+                async search() {
+                    this.loading = true;
+                    try {
+                        this.results = await this.$wire.searchEntities(this.q);
+                    } finally {
+                        this.loading = false;
+                    }
                 },
-                select(id) {
+                onOpen() {
+                    this.open = ! this.open;
+                    if (this.open) {
+                        this.$nextTick(() => this.$refs.q.focus());
+                        if (this.results.length === 0) this.search(); // preload the first page
+                    }
+                },
+                select(id, name) {
                     this.selectedId = Number(id);
+                    this.selectedLabel = name;
                     this.open = false;
                     this.q = '';
                     this.$wire.set('focusEntityId', this.selectedId);
                 },
                 clear(silent = false) {
                     this.selectedId = null;
+                    this.selectedLabel = null;
                     this.open = false;
                     this.q = '';
-                    if (!silent) this.$wire.set('focusEntityId', null);
+                    if (! silent) this.$wire.set('focusEntityId', null);
+                },
+                // Keep the button label in sync when focus changes elsewhere (saved view, node click).
+                syncFromEvent(detail) {
+                    const id = detail?.id ?? null;
+                    this.selectedId = id ? Number(id) : null;
+                    if (detail && 'label' in detail) this.selectedLabel = detail.label ?? null;
                 },
             };
         };
@@ -350,7 +372,8 @@
                 },
                 goBack() {
                     if (this.trail.length >= 2) {
-                        this.focusOn(this.trail[this.trail.length - 2].id);
+                        const prev = this.trail[this.trail.length - 2];
+                        this.focusOn(prev.id, prev.label);
                     } else {
                         this.clearFocus();
                     }
@@ -358,21 +381,21 @@
                 clearFocus() {
                     this.sel = null;
                     this.$wire.set('focusEntityId', null);
-                    this.$dispatch('focus-loaded', { id: null });
+                    this.$dispatch('focus-loaded', { id: null, label: null });
                 },
                 statusText() {
                     return this.counts.nodes + ' entities · ' + this.counts.edges + ' connections'
                         + (this.truncated ? '  (capped — narrow the filters)' : '');
                 },
                 fit() { if (this.cy) this.cy.fit(undefined, 40); },
-                focusOn(id) {
+                focusOn(id, label = null) {
                     if (!id) return;
                     id = Number(id);
                     this.sel = null;
                     // Re-center the graph on this entity; server rebuilds and pushes graph-updated back.
                     this.$wire.set('focusEntityId', id);
                     // Keep the searchable "Start from" picker in sync (it's wire:ignore).
-                    this.$dispatch('focus-loaded', { id });
+                    this.$dispatch('focus-loaded', { id, label });
                 },
                 render(graph) {
                     const nodes = graph.nodes || [], edges = graph.edges || [];

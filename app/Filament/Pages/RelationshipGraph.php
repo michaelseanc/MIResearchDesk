@@ -154,7 +154,7 @@ class RelationshipGraph extends Page
 
         // Sync the wire:ignore client-side pickers to the loaded selection.
         $this->dispatch('types-loaded', types: $this->types);
-        $this->dispatch('focus-loaded', id: $this->focusEntityId);
+        $this->dispatch('focus-loaded', id: $this->focusEntityId, label: $this->focusEntityLabel());
         $this->rebuild();
     }
 
@@ -205,15 +205,34 @@ class RelationshipGraph extends Page
         $this->dispatch('graph-updated', graph: $graph);
     }
 
-    /** @return array<int, string> */
-    public function getEntityOptions(): array
+    /**
+     * Server-side search for the "Start from" picker. Queries the full entity table as the user
+     * types, so it scales past the old client-side 500-row cap (production has thousands).
+     *
+     * @return array<int, array{id:int, name:string}>
+     */
+    public function searchEntities(string $q = ''): array
     {
+        $q = trim($q);
+
         return Entity::query()
-            ->when(! auth()->user()?->can('view_confidential_identity'), fn ($q) => $q->where('sensitivity', '!=', 'sealed'))
+            ->when(! auth()->user()?->can('view_confidential_identity'), fn ($query) => $query->where('sensitivity', '!=', 'sealed'))
+            ->when($q !== '', fn ($query) => $query->where('display_name', 'like', "%{$q}%"))
             ->orderBy('display_name')
-            ->limit(500)
-            ->pluck('display_name', 'id')
+            ->limit(30)
+            ->get(['id', 'display_name'])
+            ->map(fn ($e): array => ['id' => (int) $e->id, 'name' => $e->display_name])
             ->all();
+    }
+
+    /** Display name of the currently-focused entity — so the picker button shows it without a full list. */
+    public function focusEntityLabel(): ?string
+    {
+        if (! $this->focusEntityId) {
+            return null;
+        }
+
+        return Entity::query()->whereKey($this->focusEntityId)->value('display_name');
     }
 
     /** @return array<int, string> */
