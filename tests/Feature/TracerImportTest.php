@@ -114,6 +114,26 @@ class TracerImportTest extends TestCase
         $this->assertSame('EL PASO', $mailers->jurisdiction);
     }
 
+    public function test_windows1252_bytes_are_converted_to_valid_utf8(): void
+    {
+        // TRACER data carries Windows-1252 bytes (here \x99 = ™) that MySQL's utf8mb4 rejects (1366).
+        // The importer must convert them to valid UTF-8 before storing.
+        $header = 'CO_ID,ContributionAmount,ContributionDate,LastName,FirstName,MI,Suffix,Address1,Address2,City,State,Zip,Explanation,RecordID,FiledDate,ContributionType,ReceiptType,ContributorType,Electioneering,CommitteeType,CommitteeName,CandidateName,Employer,Occupation,Amended,Amendment,AmendedRecordID,Jurisdiction,OccupationComments';
+        $row = "\"1\",\"100\",\"2026-06-01\",\"SMITH\x99CO\",\"\",\"\",\"\",\"1 A ST\",\"\",\"MONUMENT\",\"CO\",\"80132\",\"\",\"R1\",\"\",\"Monetary\",\"\",\"Individual\",\"\",\"Candidate Committee\",\"Friends of Monument\",\"JANE\",\"Acme\x99 Realty\",\"Realtor\",\"N\",\"N\",\"0\",\"EL PASO\",\"\"";
+        $path = tempnam(sys_get_temp_dir(), 'tracer') . '.csv';
+        file_put_contents($path, $header . "\n" . $row . "\n");
+
+        $batch = TracerImporter::createBatch(1, 'contributions', 2026);
+        (new TracerImporter())->parseRows($path, $batch);
+        @unlink($path);
+
+        $txn = FinanceTransaction::where('committee_name', 'Friends of Monument')->first();
+        $this->assertNotNull($txn);
+        $this->assertTrue(mb_check_encoding($txn->contributor_name, 'UTF-8'), 'contributor name is valid UTF-8');
+        $this->assertTrue(mb_check_encoding($txn->employer, 'UTF-8'), 'employer is valid UTF-8');
+        $this->assertStringContainsString('™', $txn->employer); // \x99 (cp1252) → ™ (UTF-8)
+    }
+
     public function test_county_filter_keeps_matching_jurisdictions(): void
     {
         $importer = new TracerImporter();

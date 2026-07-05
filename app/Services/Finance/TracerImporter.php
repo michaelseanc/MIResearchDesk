@@ -90,7 +90,10 @@ class TracerImporter
 
             $batch->update(['status' => 'completed', 'completed_at' => now()]);
         } catch (Throwable $e) {
-            $batch->update(['status' => 'failed', 'error' => Str::limit($e->getMessage(), 2000)]);
+            // Scrub invalid bytes from the message too — otherwise storing a failure that involved
+            // dirty source data would itself throw a 1366 and mask the real error.
+            $message = (string) mb_convert_encoding($e->getMessage(), 'UTF-8', 'UTF-8');
+            $batch->update(['status' => 'failed', 'error' => Str::limit($message, 2000)]);
             throw $e;
         } finally {
             // Tidy temp extraction (the untouched original is preserved on the private disk).
@@ -188,8 +191,18 @@ class TracerImporter
                 return null;
             }
             $val = trim((string) $row[$pos]);
+            if ($val === '') {
+                return null;
+            }
 
-            return $val === '' ? null : $val;
+            // TRACER bulk files carry Windows-1252 bytes (™, ®, smart quotes, accented names) that
+            // MySQL's utf8mb4 rejects (SQLSTATE 1366). SQLite tolerated them; MySQL doesn't. Convert
+            // any value that isn't already valid UTF-8 from Windows-1252 so it stores cleanly.
+            if (! mb_check_encoding($val, 'UTF-8')) {
+                $val = mb_convert_encoding($val, 'UTF-8', 'Windows-1252');
+            }
+
+            return $val;
         };
 
         $data = [];
