@@ -38,7 +38,9 @@ class DataExportCommand extends Command
             $handle = fopen("{$dir}/{$table}.jsonl", 'w');
             $count = 0;
             foreach (DB::table($table)->cursor() as $row) {
-                fwrite($handle, json_encode($row) . "\n");
+                // Substitute (don't fail on) malformed UTF-8 from imported source data, so no row is
+                // silently dropped as a blank line on the other side.
+                fwrite($handle, json_encode($row, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE) . "\n");
                 $count++;
             }
             fclose($handle);
