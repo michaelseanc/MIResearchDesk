@@ -44,7 +44,10 @@ class AdminPanelProvider extends PanelProvider
             ->profile()
             ->multiFactorAuthentication(
                 [AppAuthentication::make()->recoverable()],
-                isRequired: true, // mandatory 2FA for all staff
+                // Optional (not forced) so reviewers can sign in with just email+password, no
+                // authenticator app. Users who DO enroll are still challenged — owner/editor stay
+                // protected. Flip back to isRequired: true to make 2FA mandatory for everyone again.
+                isRequired: false,
             )
             ->colors([
                 'primary' => Color::Blue,
