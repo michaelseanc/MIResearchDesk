@@ -31,20 +31,30 @@ class PendingImportsWidgetTest extends TestCase
     public function test_warns_when_an_import_has_been_pending_too_long(): void
     {
         $batch = TracerImporter::createBatch(1, 'expenditures', 2026, ['counties' => ['EL PASO']]);
-        $batch->forceFill(['created_at' => now()->subMinutes(2)])->save(); // stuck: no worker picked it up
+        $batch->forceFill(['created_at' => now()->subMinutes(5)])->save(); // stuck: >3 min, nothing processing
 
         Livewire::test(PendingImportsWarning::class)
-            ->assertSee('queued but not running')
+            ->assertSee('nothing processing')
             ->assertSee('queue:work');
     }
 
     public function test_silent_for_a_just_queued_import(): void
     {
-        // Freshly dispatched (<30s) — a running worker would grab it any second, so no alarm yet.
+        // Freshly dispatched (<3 min) — a running worker would grab it any second, so no alarm yet.
         TracerImporter::createBatch(1, 'loans', 2026);
 
         Livewire::test(PendingImportsWarning::class)
-            ->assertDontSee('queued but not running');
+            ->assertDontSee('nothing processing');
+    }
+
+    public function test_silent_while_an_import_is_actively_processing(): void
+    {
+        // One old pending batch, but another is downloading → a worker is clearly running, so no alarm.
+        TracerImporter::createBatch(1, 'loans', 2026)->forceFill(['created_at' => now()->subMinutes(10)])->save();
+        TracerImporter::createBatch(1, 'contributions', 2026)->forceFill(['status' => 'parsing'])->save();
+
+        Livewire::test(PendingImportsWarning::class)
+            ->assertDontSee('nothing processing');
     }
 
     public function test_silent_when_imports_have_completed(): void
@@ -53,6 +63,6 @@ class PendingImportsWidgetTest extends TestCase
         $batch->forceFill(['status' => 'completed', 'created_at' => now()->subMinutes(5)])->save();
 
         Livewire::test(PendingImportsWarning::class)
-            ->assertDontSee('queued but not running');
+            ->assertDontSee('nothing processing');
     }
 }

@@ -6,9 +6,9 @@ use App\Models\FinanceImportBatch;
 use Filament\Widgets\Widget;
 
 /**
- * Flags imports that were queued but never picked up by a background worker — the usual cause of a
- * "why is my import empty?" moment in local dev, where no persistent queue worker is running.
- * (In production on Cloudways a Supervisor-managed worker runs continuously, so this stays hidden.)
+ * Flags imports that appear genuinely stuck — queued for a while with NOTHING actively processing.
+ * Stays quiet while an import is downloading/parsing (a worker is clearly running and others are
+ * just queued behind it), so it doesn't cry wolf during normal multi-import runs.
  */
 class PendingImportsWarning extends Widget
 {
@@ -18,12 +18,17 @@ class PendingImportsWarning extends Widget
 
     protected static ?string $pollingInterval = '15s';
 
-    /** Batches queued but not yet started for >30s → almost certainly no worker is processing them. */
+    /** Pending batches waiting >3 min with no batch in progress → the worker likely isn't running. */
     public function getStalled(): int
     {
+        // A worker is actively churning → pending batches are just queued behind it, not stuck.
+        if (FinanceImportBatch::query()->whereIn('status', ['downloading', 'parsing'])->exists()) {
+            return 0;
+        }
+
         return FinanceImportBatch::query()
             ->where('status', 'pending')
-            ->where('created_at', '<', now()->subSeconds(30))
+            ->where('created_at', '<', now()->subMinutes(3))
             ->count();
     }
 }
