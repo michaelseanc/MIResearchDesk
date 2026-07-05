@@ -35,7 +35,7 @@ class RelationshipGraph extends Page
 
     // --- Filter state (bound live in the view) ---
     public ?int $focusEntityId = null;
-    public int $depth = 2;
+    public int $depth = 1;
     /** @var array<int> */
     public array $types = [];
     /** @var array<string> */
@@ -174,7 +174,7 @@ class RelationshipGraph extends Page
     public function resetFilters(): void
     {
         $this->focusEntityId = null;
-        $this->depth = 2;
+        $this->depth = 1;
         $this->types = [];
         $this->verificationStates = [];
         $this->issueTagId = null;
