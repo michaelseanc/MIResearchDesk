@@ -38,7 +38,10 @@
                             <div class="max-h-64 space-y-0.5 overflow-y-auto">
                                 <button type="button" @click="clear()"
                                     class="flex w-full items-center rounded px-2 py-1 text-left text-sm text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700"
-                                    x-show="q === ''">— Whole network —</button>
+                                    x-show="q.trim() === ''">— Whole network —</button>
+                                <p class="px-2 py-2 text-xs text-gray-400" x-show="q.trim().length > 0 && q.trim().length < 2">
+                                    Keep typing…
+                                </p>
                                 <template x-for="e in results" :key="e.id">
                                     <button type="button" @click="select(e.id, e.name)"
                                         class="flex w-full items-center rounded px-2 py-1 text-left text-sm text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -47,7 +50,7 @@
                                     </button>
                                 </template>
                                 <p class="px-2 py-2 text-xs text-gray-400" x-show="loading">Searching…</p>
-                                <p class="px-2 py-2 text-xs text-gray-400" x-show="!loading && results.length === 0 && q !== ''">
+                                <p class="px-2 py-2 text-xs text-gray-400" x-show="!loading && q.trim().length >= 2 && results.length === 0">
                                     No matching entities.
                                 </p>
                             </div>
@@ -288,10 +291,18 @@
                     return this.selectedLabel || ('#' + this.selectedId);
                 },
                 // Server-side search over the whole entity table (no client-side row cap).
+                // Only searches once there's something to match — an empty field shows nothing,
+                // so opening the picker isn't a wall of names.
                 async search() {
+                    const q = this.q.trim();
+                    if (q.length < 2) {
+                        this.results = [];
+                        this.loading = false;
+                        return;
+                    }
                     this.loading = true;
                     try {
-                        this.results = await this.$wire.searchEntities(this.q);
+                        this.results = await this.$wire.searchEntities(q);
                     } finally {
                         this.loading = false;
                     }
@@ -299,8 +310,7 @@
                 onOpen() {
                     this.open = ! this.open;
                     if (this.open) {
-                        this.$nextTick(() => this.$refs.q.focus());
-                        if (this.results.length === 0) this.search(); // preload the first page
+                        this.$nextTick(() => this.$refs.q.focus()); // just focus — no preloaded list
                     }
                 },
                 select(id, name) {
